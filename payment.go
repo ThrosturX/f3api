@@ -9,19 +9,19 @@ type Payment struct {
 }
 
 type PaymentAttributes struct {
-	Amount               fractionalAmount  `json:"amount"`
+	Amount               FractionalAmount  `json:"amount"`
 	BeneficiaryParty     TypedParty        `json:"beneficiary_party"`
 	ChargesInformation   ChargeInformation `json:"charges_information"`
 	Currency             string            `json:"currency"`
 	DebtorParty          Party             `json:"debtor_party"`
 	EndToEndReference    string            `json:"end_to_end_reference"`
 	Fx                   FX                `json:"fx"`
-	NumericReference     stringedInt       `json:"numeric_reference"`
-	PaymentID            stringedInt       `json:"payment_id"`
+	NumericReference     StringedInt       `json:"numeric_reference"`
+	PaymentID            StringedInt       `json:"payment_id"`
 	PaymentPurpose       string            `json:"payment_purpose"`
 	PaymentScheme        string            `json:"payment_scheme"`
 	PaymentType          string            `json:"payment_type"`
-	ProcessingDate       date              `json:"processing_date"`
+	ProcessingDate       Date              `json:"processing_date"`
 	Reference            string            `json:"reference"`
 	SchemePaymentSubType string            `json:"scheme_payment_sub_type"`
 	SchemePaymentType    string            `json:"scheme_payment_type"`
@@ -50,18 +50,18 @@ type TypedParty struct {
 type ChargeInformation struct {
 	BearerCode              string           `json:"bearer_code"`
 	SenderCharges           []SenderCharge   `json:"sender_charges"`
-	ReceiverChargesAmount   fractionalAmount `json:"receiver_charges_amount"`
+	ReceiverChargesAmount   FractionalAmount `json:"receiver_charges_amount"`
 	ReceiverChargesCurrency string           `json:"receiver_charges_currency"`
 }
 
 type SenderCharge struct {
-	Amount   fractionalAmount `json:"amount"`
+	Amount   FractionalAmount `json:"amount"`
 	Currency string           `json:"currency"`
 }
 
 type FX struct {
 	ContractReference string           `json:"contract_reference"`
-	ExchangeRate      exchangeRate     `json:"exchange_rate"`
-	OriginalAmount    fractionalAmount `json:"original_amount"`
+	ExchangeRate      ExchangeRate     `json:"exchange_rate"`
+	OriginalAmount    FractionalAmount `json:"original_amount"`
 	OriginalCurrency  string           `json:"original_currency"`
 }
