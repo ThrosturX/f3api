@@ -13,18 +13,138 @@ import (
 	"github.com/ant0ine/go-json-rest/rest"
 )
 
-func createRestRequest(method string, urlStr string, body io.Reader, params map[string]string) *rest.Request {
-	origReq, err := http.NewRequest(method, urlStr, body)
+func TestGenericApi(t *testing.T) {
+	var restApi RestApi = NewGenericApi(NewInMemStore())
+
+	// a basic test I wrote to get myself started -- throstur
+	err := checkPostedResourceIncreasesCollectionSize(restApi, t)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
-	return &rest.Request{
-		origReq,
-		params,
-		map[string]interface{}{},
+
+    // NOTE: Could put more tests here
+}
+
+// Tests whether or not a resource can be created with a PUT request.
+func TestPutCreates(t *testing.T) {
+	var (
+		api     RestApi
+		payment Payment
+	)
+	responseWriter := &testResponseWriter{}
+
+	api = NewGenericApi(NewInMemStore())
+
+	err := json.Unmarshal([]byte(DEFAULT_PAYMENT), &payment)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify that the resource doesn't exist
+	if newList, err := getPayments(api); err != nil || len(newList) > 0 {
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Fatal("Test initialized with non-empty data set")
+	}
+
+	sendPutRequest(api, payment, responseWriter)
+
+	// verify that the resource exists
+	found, err := fetchPayment(api, payment.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// the ID should always be the same, regardless of race conditions, so check this first
+	if payment.ID != found.ID {
+		t.Fatalf("Mismatched IDs on payments: %s and %s", payment.ID, found.ID)
+	}
+
+	if !reflect.DeepEqual(payment, found) {
+		t.Fatal("Mismatched payments: DeepEqual returned false")
 	}
 }
 
+// Tests whether or not a resource can be updated with a PUT request.
+// Also tests the GetPayment (get single) endpoint, since it makes sense to do it somewhere.
+func TestPutCreatesAndUpdates(t *testing.T) {
+	var (
+		api     RestApi
+		payment Payment
+	)
+	responseWriter := &testResponseWriter{}
+
+	api = NewGenericApi(NewInMemStore())
+
+	err := json.Unmarshal([]byte(DEFAULT_PAYMENT), &payment)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// PUT the payment resource
+	sendPutRequest(api, payment, responseWriter)
+
+	// Modify the resource and PUT it again
+	payment.Attributes.PaymentID = StringedInt(1337)
+
+	// PUT the mutated payment resource
+	sendPutRequest(api, payment, responseWriter)
+
+	// Verify that the resource exists
+	found, err := fetchPayment(api, payment.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that the found payment is the same as the newly mutated payment
+	if !reflect.DeepEqual(payment, found) {
+		t.Fatal("Mismatched payments: DeepEqual returned false")
+	}
+
+	// Sanity check: also verify that the PaymentID changed:
+	if found.Attributes.PaymentID != 1337 {
+		t.Fatalf("The PaymentID did not get transformed to 1337!")
+	}
+}
+
+// Tests the DeletePayment method exclusively, leverages direct ApiStore access.
+func TestDeletePayment(t *testing.T) {
+	var (
+		store          ApiStore
+		api            RestApi
+		responseWriter rest.ResponseWriter
+		p1, p2         Payment
+		err            error
+	)
+
+	store = NewInMemStore()
+	api = NewGenericApi(store)
+	responseWriter = &testResponseWriter{}
+
+	p1 = defaultPayment()
+
+	store.AddPayment(p1)
+
+	_, err = store.GetPayment(p1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	params := make(map[string]string)
+	params["id"] = p1.ID
+	request := createRestRequest("DELETE", "/payments/:id", strings.NewReader(""), params)
+	api.DeletePayment(responseWriter, request)
+
+	p2, err = store.GetPayment(p1.ID)
+	if err == nil || p2.ID == p1.ID {
+		t.Fatalf("The resource wasn't supposed to exist!")
+	}
+}
+
+// Utilities below
+
+// A basic ResponseWriter that writes the result into a string
 type testResponseWriter struct {
 	http.ResponseWriter
 	result string
@@ -60,11 +180,24 @@ func (w *testResponseWriter) Read() []byte {
 }
 
 func (w *testResponseWriter) WriteHeader(int) {
-	// this method is currently not used for testing, and only exists for implementation of rest.ResponseWriter purposes
+	// this method is currently not used for testing, and only exists to implement rest.ResponseWriter
 	return
 }
 
-// Checks whether or not posting a new payment resource increases the number of items in the collection
+func createRestRequest(method string, urlStr string, body io.Reader, params map[string]string) *rest.Request {
+	origReq, err := http.NewRequest(method, urlStr, body)
+	if err != nil {
+		panic(err)
+	}
+	return &rest.Request{
+		origReq,
+		params,
+		map[string]interface{}{},
+	}
+}
+
+// Checks whether or not posting a new payment resource increases the number of items in the collection.
+// Tests POST and GET(all) endpoints
 // NOTE: This method ALWAYS posts the same payment resource (same ID). Consider adding it as a parameter or implementing an ID generator if needed.
 func checkPostedResourceIncreasesCollectionSize(api RestApi, t *testing.T) error {
 	var (
@@ -161,130 +294,3 @@ func fetchPayment(api RestApi, id string) (Payment, error) {
 
 	return payment, err
 }
-
-func TestGenericApi(t *testing.T) {
-	var restApi RestApi = NewGenericApi(NewInMemStore())
-
-	// some basic tests
-	err := checkPostedResourceIncreasesCollectionSize(restApi, t)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// TODO: More tests
-}
-
-func TestPutCreates(t *testing.T) {
-	var (
-		api     RestApi
-		payment Payment
-	)
-	responseWriter := &testResponseWriter{}
-
-	api = NewGenericApi(NewInMemStore())
-
-	err := json.Unmarshal([]byte(DEFAULT_PAYMENT), &payment)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// verify that the resource doesn't exist
-	if newList, err := getPayments(api); err != nil || len(newList) > 0 {
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Fatal("Test initialized with non-empty data set")
-	}
-
-	sendPutRequest(api, payment, responseWriter)
-
-	// verify that the resource exists
-	/* TODO : Get payment */
-	found, err := fetchPayment(api, payment.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// the ID should always be the same, regardless of race conditions, so check this first
-	if payment.ID != found.ID {
-		t.Fatalf("Mismatched IDs on payments: %s and %s", payment.ID, found.ID)
-	}
-
-	if !reflect.DeepEqual(payment, found) {
-		t.Fatal("Mismatched payments: DeepEqual returned false")
-	}
-}
-
-func TestPutCreatesAndUpdates(t *testing.T) {
-	var (
-		api     RestApi
-		payment Payment
-	)
-	responseWriter := &testResponseWriter{}
-
-	api = NewGenericApi(NewInMemStore())
-
-	err := json.Unmarshal([]byte(DEFAULT_PAYMENT), &payment)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// PUT the payment resource
-	sendPutRequest(api, payment, responseWriter)
-
-	// Modify the resource and PUT it again
-	payment.Attributes.PaymentID = StringedInt(1337)
-
-	// PUT the mutated payment resource
-	sendPutRequest(api, payment, responseWriter)
-
-	// Verify that the resource exists
-	found, err := fetchPayment(api, payment.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Verify that the found payment is the same as the newly mutated payment
-	if !reflect.DeepEqual(payment, found) {
-		t.Fatal("Mismatched payments: DeepEqual returned false")
-	}
-
-	// Sanity check: also verify that the PaymentID changed:
-	if found.Attributes.PaymentID != 1337 {
-		t.Fatalf("The PaymentID did not get transformed to 1337!")
-	}
-}
-
-func TestDeletePayment(t *testing.T) {
-	var (
-		store          ApiStore
-		api            RestApi
-		responseWriter rest.ResponseWriter
-		p1, p2         Payment
-		err            error
-	)
-
-	store = NewInMemStore()
-	api = NewGenericApi(store)
-	responseWriter = &testResponseWriter{}
-
-	p1 = defaultPayment()
-
-	store.AddPayment(p1)
-
-	_, err = store.GetPayment(p1.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	params := make(map[string]string)
-	params["id"] = p1.ID
-	request := createRestRequest("DELETE", "/payments/:id", strings.NewReader(""), params)
-	api.DeletePayment(responseWriter, request)
-
-	p2, err = store.GetPayment(p1.ID)
-	if err == nil || p2.ID == p1.ID {
-		t.Fatalf("The resource wasn't supposed to exist!")
-	}
-}
-
