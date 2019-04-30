@@ -7,6 +7,7 @@ import (
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
 )
 
+// Interface for REST api implementations
 type RestApi interface {
 	// Fetch a payment resource
 	GetPayment(rest.ResponseWriter, *rest.Request)
@@ -31,6 +32,7 @@ type GenericApi struct {
 	store ApiStore
 }
 
+// Creates a new Generic API with the provided ApiStore for stable storage
 func NewGenericApi(store ApiStore) *GenericApi {
 	ga := GenericApi{
 		store: store,
@@ -38,15 +40,12 @@ func NewGenericApi(store ApiStore) *GenericApi {
 	return &ga
 }
 
+// Simple wrapper function for future improvements (DRY -- this is a good place for type switches)
 func (api *GenericApi) handleError(w rest.ResponseWriter, r *rest.Request, err error) {
-	switch err.(type) {
-	case NotFoundError:
-		rest.NotFound(w, r)
-	default:
-		rest.Error(w, err.Error(), http.StatusInternalServerError)
-	}
+    rest.Error(w, err.Error(), http.StatusInternalServerError)
 }
 
+// Fetches a payment resource
 func (api *GenericApi) GetPayment(w rest.ResponseWriter, r *rest.Request) {
 	id := r.PathParam("id")
 	payment, err := api.store.GetPayment(id)
@@ -58,6 +57,7 @@ func (api *GenericApi) GetPayment(w rest.ResponseWriter, r *rest.Request) {
 	w.WriteJson(payment)
 }
 
+// Creates a new payment resource. NOTE: Currently requires the resource to have an ID
 func (api *GenericApi) PostPayment(w rest.ResponseWriter, r *rest.Request) {
 	payment := Payment{}
 	if err := r.DecodeJsonPayload(&payment); err != nil {
@@ -81,6 +81,7 @@ func (api *GenericApi) PostPayment(w rest.ResponseWriter, r *rest.Request) {
 	w.WriteJson(&payment)
 }
 
+// Creates or updates a payment resource, requires an "id" parameter
 func (api *GenericApi) PutPayment(w rest.ResponseWriter, r *rest.Request) {
 	id := r.PathParam("id")
 
@@ -101,6 +102,7 @@ func (api *GenericApi) PutPayment(w rest.ResponseWriter, r *rest.Request) {
 	w.WriteJson(&payment)
 }
 
+// Deletes a payment resource, requires an "id" parameter
 func (api *GenericApi) DeletePayment(w rest.ResponseWriter, r *rest.Request) {
 	id := r.PathParam("id")
 
@@ -116,6 +118,7 @@ func (api *GenericApi) DeletePayment(w rest.ResponseWriter, r *rest.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// Fetches all payments, NOTE: No pagination implemented
 func (api *GenericApi) GetAllPayments(w rest.ResponseWriter, r *rest.Request) {
 	payments, err := api.store.GetAllPayments()
 

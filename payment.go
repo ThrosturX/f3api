@@ -1,5 +1,7 @@
 package f3api
 
+// The Payment Type, our main resource payload.
+// Details not disclosed, same goes for other types in this file.
 type Payment struct {
 	Type           string            `json:"type"`
 	ID             string            `json:"id"`
@@ -8,6 +10,7 @@ type Payment struct {
 	Attributes     PaymentAttributes `json:"attributes"`
 }
 
+// No documentation exists for this type.
 type PaymentAttributes struct {
 	Amount               FractionalAmount  `json:"amount"`
 	BeneficiaryParty     TypedParty        `json:"beneficiary_party"`
@@ -28,12 +31,14 @@ type PaymentAttributes struct {
 	SponsorParty         MinimalParty      `json:"sponsor_party"`
 }
 
+// No documentation exists for this type.
 type MinimalParty struct {
 	AccountNumber string `json:"account_number"`
 	BankID        string `json:"bank_id"`
 	BankIDCode    string `json:"bank_id_code"`
 }
 
+// No documentation exists for this type.
 type Party struct {
 	MinimalParty
 	AccountName       string `json:"account_name"`
@@ -42,11 +47,13 @@ type Party struct {
 	Name              string `json:"name"`
 }
 
+// No documentation exists for this type.
 type TypedParty struct {
 	Party
 	AccountType int `json:"account_type"`
 }
 
+// No documentation exists for this type.
 type ChargeInformation struct {
 	BearerCode              string           `json:"bearer_code"`
 	SenderCharges           []SenderCharge   `json:"sender_charges"`
@@ -54,11 +61,13 @@ type ChargeInformation struct {
 	ReceiverChargesCurrency string           `json:"receiver_charges_currency"`
 }
 
+// No documentation exists for this type.
 type SenderCharge struct {
 	Amount   FractionalAmount `json:"amount"`
 	Currency string           `json:"currency"`
 }
 
+// No documentation exists for this type.
 type FX struct {
 	ContractReference string           `json:"contract_reference"`
 	ExchangeRate      ExchangeRate     `json:"exchange_rate"`

@@ -287,3 +287,4 @@ func TestDeletePayment(t *testing.T) {
 		t.Fatalf("The resource wasn't supposed to exist!")
 	}
 }
+

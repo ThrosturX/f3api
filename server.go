@@ -7,6 +7,8 @@ import (
 	"github.com/ant0ine/go-json-rest/rest"
 )
 
+// Minimal example as seen in the go-json-rest documentation;
+// Sets up a basic API with the routes as specified in the Coding Exercise document
 func RunServer(impl RestApi) {
 	api := rest.NewApi()
 	api.Use(rest.DefaultDevStack...)
