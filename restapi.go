@@ -1,8 +1,6 @@
 package f3api
 
 import (
-	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/ant0ine/go-json-rest/rest"
@@ -22,65 +20,109 @@ type RestApi interface {
 	// Delete a payment resource
 	DeletePayment(rest.ResponseWriter, *rest.Request)
 
-	// TODO: List "a collection", whatever that means
-	// For now, just list them all:
 	// List all payment resources
+	// -- List "a collection", whatever that means
+	// Without further specification (e.g. about pagination), just list them all:
 	GetAllPayments(rest.ResponseWriter, *rest.Request)
 }
 
-// Example implementation of the API
-// Does not implement stable storage, as it is literally an IN-MEMORY storage and therefore only suitable for testing
-type InMemApi struct {
-	// Map the ID to the payment object to prevent duplicates
-	payments map[string]Payment
+// Generic implementation of the API
+type GenericApi struct {
+	store ApiStore
 }
 
-func NewInMemApi() *InMemApi {
-	imapi := InMemApi{}
-	imapi.payments = make(map[string]Payment)
-
-	return &imapi
-}
-
-func (imapi *InMemApi) addPayment(p Payment) error {
-	if _, ok := imapi.payments[p.ID]; ok {
-		return errors.New(fmt.Sprintf("Payment with ID <%v> already exists!", p.ID))
+func NewGenericApi(store ApiStore) *GenericApi {
+	ga := GenericApi{
+		store: store,
 	}
-	imapi.payments[p.ID] = p
-	return nil
+	return &ga
 }
 
-func (imapi *InMemApi) GetPayment(w rest.ResponseWriter, r *rest.Request) {
-
+func (api *GenericApi) handleError(w rest.ResponseWriter, r *rest.Request, err error) {
+	switch err.(type) {
+	case NotFoundError:
+		rest.NotFound(w, r)
+	default:
+		rest.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
-func (imapi *InMemApi) PostPayment(w rest.ResponseWriter, r *rest.Request) {
+func (api *GenericApi) GetPayment(w rest.ResponseWriter, r *rest.Request) {
+	id := r.PathParam("id")
+	payment, err := api.store.GetPayment(id)
+	if err != nil {
+		api.handleError(w, r, err)
+		return
+	}
+
+	w.WriteJson(payment)
+}
+
+func (api *GenericApi) PostPayment(w rest.ResponseWriter, r *rest.Request) {
 	payment := Payment{}
 	if err := r.DecodeJsonPayload(&payment); err != nil {
 		rest.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	if err := imapi.addPayment(payment); err != nil {
-		rest.Error(w, err.Error(), http.StatusInternalServerError)
+	// We probably shouldn't have an ID when POST-ing, but since I don't know how IDs are being generated,
+	// we'll only accept payments with pre-generated IDs
+	if payment.ID == "" {
+		rest.Error(w, "Payment without ID is invalid", http.StatusInternalServerError)
+		return
+	}
+
+	err := api.store.AddPayment(payment)
+	if err != nil {
+		api.handleError(w, r, err)
 		return
 	}
 
 	w.WriteJson(&payment)
 }
 
-func (imapi *InMemApi) PutPayment(w rest.ResponseWriter, r *rest.Request) {
+func (api *GenericApi) PutPayment(w rest.ResponseWriter, r *rest.Request) {
+	id := r.PathParam("id")
 
-}
-
-func (imapi *InMemApi) DeletePayment(w rest.ResponseWriter, r *rest.Request) {
-
-}
-
-func (imapi *InMemApi) GetAllPayments(w rest.ResponseWriter, r *rest.Request) {
-	var payments []Payment
-	for _, v := range imapi.payments {
-		payments = append(payments, v)
+	if id == "" {
+		rest.Error(w, "PUT Request must include ID", http.StatusBadRequest)
 	}
+
+	payment := Payment{}
+	if err := r.DecodeJsonPayload(&payment); err != nil {
+		rest.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	payment.ID = id
+
+	api.store.StorePayment(payment)
+
+	w.WriteJson(&payment)
+}
+
+func (api *GenericApi) DeletePayment(w rest.ResponseWriter, r *rest.Request) {
+	id := r.PathParam("id")
+
+	if id == "" {
+		rest.Error(w, "DELETE Request must include ID", http.StatusBadRequest)
+	}
+	err := api.store.DeletePayment(id)
+	if err != nil {
+		api.handleError(w, r, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (api *GenericApi) GetAllPayments(w rest.ResponseWriter, r *rest.Request) {
+	payments, err := api.store.GetAllPayments()
+
+	if err != nil {
+		api.handleError(w, r, err)
+		return
+	}
+
 	w.WriteJson(&payments)
 }

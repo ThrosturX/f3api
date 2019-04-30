@@ -2,18 +2,21 @@ package f3api
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/ant0ine/go-json-rest/rest"
 )
 
-func createRestRequest(method string, urlStr string, body io.Reader, params map[string]string, t *testing.T) *rest.Request {
+func createRestRequest(method string, urlStr string, body io.Reader, params map[string]string) *rest.Request {
 	origReq, err := http.NewRequest(method, urlStr, body)
 	if err != nil {
-		t.Fatal(err)
+		panic(err)
 	}
 	return &rest.Request{
 		origReq,
@@ -56,6 +59,11 @@ func (w *testResponseWriter) Read() []byte {
 	return []byte(w.result)
 }
 
+func (w *testResponseWriter) WriteHeader(int) {
+	// this method is currently not used for testing, and only exists for implementation of rest.ResponseWriter purposes
+	return
+}
+
 // Checks whether or not posting a new payment resource increases the number of items in the collection
 // NOTE: This method ALWAYS posts the same payment resource (same ID). Consider adding it as a parameter or implementing an ID generator if needed.
 func checkPostedResourceIncreasesCollectionSize(api RestApi, t *testing.T) error {
@@ -64,51 +72,98 @@ func checkPostedResourceIncreasesCollectionSize(api RestApi, t *testing.T) error
 		oldList, newList []Payment
 		oldLen, newLen   int
 	)
-	// we'll send the request for all payments twice, so lets create it now:
-	getPayments := createRestRequest("GET", "/payments", strings.NewReader(""), nil, t)
 
 	params := make(map[string]string)
 	// we will also be sending a new json payment to be created
-	postPayment := createRestRequest("POST", "/payments", strings.NewReader(DEFAULT_PAYMENT), params, t)
-
-	responseWriter := &testResponseWriter{}
+	postPayment := createRestRequest("POST", "/payments", strings.NewReader(DEFAULT_PAYMENT), params)
 
 	// get the original length, call the API, check the response
-	api.GetAllPayments(responseWriter, getPayments)
-
-	buf := responseWriter.Read()
-
-	err = json.Unmarshal(buf, &oldList)
-	if err != nil {
-		t.Fatal(err)
+	if oldList, err = getPayments(api); err != nil {
+		return err
 	}
 
 	// post the new payment
+	responseWriter := &testResponseWriter{}
 	api.PostPayment(responseWriter, postPayment)
 
 	// get the new length as before
-	api.GetAllPayments(responseWriter, getPayments)
-
-	buf = responseWriter.Read()
-
-	err = json.Unmarshal(buf, &newList)
-	if err != nil {
-		t.Fatal(err)
+	if newList, err = getPayments(api); err != nil {
+		return err
 	}
 
 	oldLen = len(oldList)
 	newLen = len(newList)
 	if newLen != oldLen+1 {
-		t.Fatalf("Lengths did not match up! Could not satisfy %d == %d + 1", oldLen, newLen)
+		return errors.New(fmt.Sprintf("Lengths did not match up! Could not satisfy %d == %d + 1", oldLen, newLen))
 	}
 
 	// Pass
 	return nil
 }
 
-func TestInMemApi(t *testing.T) {
-	// This line will not compile nuless GormApi implements the RestApi interface
-	var restApi RestApi = NewInMemApi()
+func getPayments(api RestApi) ([]Payment, error) {
+	var payments []Payment
+
+	responseWriter := &testResponseWriter{}
+	getRequest := createRestRequest("GET", "/payments", strings.NewReader(""), nil)
+
+	api.GetAllPayments(responseWriter, getRequest)
+
+	buf := responseWriter.Read()
+
+	err := json.Unmarshal(buf, &payments)
+	if err != nil {
+		return payments, err
+	}
+
+	return payments, nil
+}
+
+func sendPaymentsRequest(api RestApi, payload Payment, responseWriter rest.ResponseWriter, requestType string, params map[string]string) error {
+	var bytes []byte
+	bytes, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	request := createRestRequest(requestType, "/payments", strings.NewReader(string(bytes)), params)
+
+	switch requestType {
+	case "PUT":
+		api.PutPayment(responseWriter, request)
+	case "POST":
+		api.PostPayment(responseWriter, request)
+	}
+
+	return nil
+}
+
+func sendPostRequest(api RestApi, payload Payment, responseWriter rest.ResponseWriter) error {
+	return sendPaymentsRequest(api, payload, responseWriter, "POST", nil)
+}
+
+func sendPutRequest(api RestApi, payload Payment, responseWriter rest.ResponseWriter) error {
+	params := make(map[string]string)
+	params["id"] = payload.ID
+	return sendPaymentsRequest(api, payload, responseWriter, "PUT", params)
+}
+
+func fetchPayment(api RestApi, id string) (Payment, error) {
+	var payment Payment
+	responseWriter := &testResponseWriter{}
+
+	params := make(map[string]string)
+	params["id"] = id
+	request := createRestRequest("GET", "/payments", strings.NewReader(""), params)
+	api.GetPayment(responseWriter, request)
+
+	buf := responseWriter.Read()
+	err := json.Unmarshal(buf, &payment)
+
+	return payment, err
+}
+
+func TestGenericApi(t *testing.T) {
+	var restApi RestApi = NewGenericApi(NewInMemStore())
 
 	// some basic tests
 	err := checkPostedResourceIncreasesCollectionSize(restApi, t)
@@ -117,6 +172,118 @@ func TestInMemApi(t *testing.T) {
 	}
 
 	// TODO: More tests
+}
 
-	// Pass
+func TestPutCreates(t *testing.T) {
+	var (
+		api     RestApi
+		payment Payment
+	)
+	responseWriter := &testResponseWriter{}
+
+	api = NewGenericApi(NewInMemStore())
+
+	err := json.Unmarshal([]byte(DEFAULT_PAYMENT), &payment)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify that the resource doesn't exist
+	if newList, err := getPayments(api); err != nil || len(newList) > 0 {
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Fatal("Test initialized with non-empty data set")
+	}
+
+	sendPutRequest(api, payment, responseWriter)
+
+	// verify that the resource exists
+	/* TODO : Get payment */
+	found, err := fetchPayment(api, payment.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// the ID should always be the same, regardless of race conditions, so check this first
+	if payment.ID != found.ID {
+		t.Fatalf("Mismatched IDs on payments: %s and %s", payment.ID, found.ID)
+	}
+
+	if !reflect.DeepEqual(payment, found) {
+		t.Fatal("Mismatched payments: DeepEqual returned false")
+	}
+}
+
+func TestPutCreatesAndUpdates(t *testing.T) {
+	var (
+		api     RestApi
+		payment Payment
+	)
+	responseWriter := &testResponseWriter{}
+
+	api = NewGenericApi(NewInMemStore())
+
+	err := json.Unmarshal([]byte(DEFAULT_PAYMENT), &payment)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// PUT the payment resource
+	sendPutRequest(api, payment, responseWriter)
+
+	// Modify the resource and PUT it again
+	payment.Attributes.PaymentID = StringedInt(1337)
+
+	// PUT the mutated payment resource
+	sendPutRequest(api, payment, responseWriter)
+
+	// Verify that the resource exists
+	found, err := fetchPayment(api, payment.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify that the found payment is the same as the newly mutated payment
+	if !reflect.DeepEqual(payment, found) {
+		t.Fatal("Mismatched payments: DeepEqual returned false")
+	}
+
+	// Sanity check: also verify that the PaymentID changed:
+	if found.Attributes.PaymentID != 1337 {
+		t.Fatalf("The PaymentID did not get transformed to 1337!")
+	}
+}
+
+func TestDeletePayment(t *testing.T) {
+	var (
+		store          ApiStore
+		api            RestApi
+		responseWriter rest.ResponseWriter
+		p1, p2         Payment
+		err            error
+	)
+
+	store = NewInMemStore()
+	api = NewGenericApi(store)
+	responseWriter = &testResponseWriter{}
+
+	p1 = defaultPayment()
+
+	store.AddPayment(p1)
+
+	_, err = store.GetPayment(p1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	params := make(map[string]string)
+	params["id"] = p1.ID
+	request := createRestRequest("DELETE", "/payments/:id", strings.NewReader(""), params)
+	api.DeletePayment(responseWriter, request)
+
+	p2, err = store.GetPayment(p1.ID)
+	if err == nil || p2.ID == p1.ID {
+		t.Fatalf("The resource wasn't supposed to exist!")
+	}
 }
