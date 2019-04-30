@@ -29,7 +29,7 @@ type ApiStore interface {
 	GetPayment(id string) (Payment, error)
 
 	// Fetch a list of all payments from the stable storage
-    // NOTE: Does not paginate!
+	// NOTE: Does not paginate!
 	GetAllPayments() ([]Payment, error)
 }
 
@@ -100,7 +100,6 @@ func (s *InMemStore) DeletePayment(id string) error {
 	delete(s.payments, id)
 	return nil
 }
-
 
 // Fetch a specific payment from the stable storage
 //

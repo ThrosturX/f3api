@@ -42,7 +42,7 @@ func NewGenericApi(store ApiStore) *GenericApi {
 
 // Simple wrapper function for future improvements (DRY -- this is a good place for type switches)
 func (api *GenericApi) handleError(w rest.ResponseWriter, r *rest.Request, err error) {
-    rest.Error(w, err.Error(), http.StatusInternalServerError)
+	rest.Error(w, err.Error(), http.StatusInternalServerError)
 }
 
 // Fetches a payment resource

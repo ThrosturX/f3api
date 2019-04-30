@@ -22,7 +22,7 @@ func TestGenericApi(t *testing.T) {
 		t.Fatal(err)
 	}
 
-    // NOTE: Could put more tests here
+	// NOTE: Could put more tests here
 }
 
 // Tests whether or not a resource can be created with a PUT request.
